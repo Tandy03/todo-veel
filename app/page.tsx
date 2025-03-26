@@ -1,103 +1,194 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "react-query";
+import axios from "axios";
+
+type Todo = {
+  id: number;
+  title: string;
+  completed: boolean;
+};
+
+const API_URL = "https://jsonplaceholder.typicode.com/todos";
+
+const fetchTodos = async () => {
+  const response = await axios.get(`${API_URL}?_limit=10`);
+  return response.data;
+};
+
+const createTodo = async (newTodo: string) => {
+  const response = await axios.post(API_URL, {
+    title: newTodo,
+    completed: false,
+  });
+  return response.data;
+};
+
+const deleteTodo = async (id: number) => {
+  const response = await axios.delete(`${API_URL}/${id}`);
+  if (response.status === 200) {
+    return { id };
+  } else {
+    throw new Error("Failed to delete Todo");
+  }
+};
+
+const updateTodo = async ({
+  id,
+  updatedTitle,
+}: {
+  id: number;
+  updatedTitle: string;
+}) => {
+  const response = await axios.put(`${API_URL}/${id}`, {
+    title: updatedTitle,
+    completed: false,
+  });
+  return response.data;
+};
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [newTodo, setNewTodo] = useState("");
+  const [editingTodoId, setEditingTodoId] = useState<number | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const queryClient = useQueryClient();
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+  const { data: todos, isLoading, isError } = useQuery("todos", fetchTodos);
+
+  const { mutate: addTodo } = useMutation(createTodo, {
+    onSuccess: () => {
+      queryClient.invalidateQueries("todos");
+    },
+  });
+
+  const { mutate: removeTodo } = useMutation(deleteTodo, {
+    onMutate: async (id) => {
+      await queryClient.cancelQueries("todos");
+      const previousTodos = queryClient.getQueryData<Todo[]>("todos");
+      queryClient.setQueryData("todos", (oldTodos: Todo[] | undefined) => {
+        return oldTodos ? oldTodos.filter((todo) => todo.id !== id) : [];
+      });
+      return { previousTodos };
+    },
+    onError: (error, variables, context) => {
+      queryClient.setQueryData("todos", context?.previousTodos);
+      console.error("Failed to delete Todo");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries("todos");
+    },
+  });
+
+  const { mutate: editTodo } = useMutation(updateTodo, {
+    onSuccess: () => {
+      queryClient.invalidateQueries("todos");
+    },
+  });
+
+  if (isLoading) return <div>Loading...</div>;
+  if (isError) return <div>Error!</div>;
+
+  const handleEditClick = (todo: Todo) => {
+    setEditingTodoId(todo.id);
+    setEditingTitle(todo.title);
+  };
+
+  const handleSaveEdit = () => {
+    if (
+      editingTodoId &&
+      editingTitle.trim() &&
+      editingTitle !==
+        todos?.find((todo: Todo) => todo.id === editingTodoId)?.title
+    ) {
+      editTodo({ id: editingTodoId, updatedTitle: editingTitle });
+      setEditingTodoId(null);
+      setEditingTitle("");
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTodoId(null);
+    setEditingTitle("");
+  };
+
+  return (
+    <div className="max-w-xl mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Todo App</h1>
+
+      <div className="mb-4 flex gap-2">
+        <input
+          type="text"
+          value={newTodo}
+          onChange={(e) => setNewTodo(e.target.value)}
+          placeholder="Add new todo"
+          className="px-4 py-2 border border-gray-300 rounded"
+        />
+        <button
+          onClick={() => {
+            if (newTodo.trim()) {
+              addTodo(newTodo);
+              setNewTodo("");
+            }
+          }}
+          className="bg-blue-500 text-white px-4 py-2 rounded"
         >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          Add
+        </button>
+      </div>
+
+      <ul className="space-y-2">
+        {todos?.map((todo: Todo) => (
+          <li key={todo.id} className="flex justify-between items-center">
+            {editingTodoId === todo.id ? (
+              <div className="flex gap-2 ml-4">
+                <input
+                  type="text"
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded"
+                />
+                <button
+                  onClick={handleSaveEdit}
+                  className="bg-green-500 text-white px-4 py-2 rounded"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  className="bg-gray-500 text-white px-4 py-2 rounded"
+                >
+                  Canсel
+                </button>
+              </div>
+            ) : (
+              <div className="flex justify-between items-center">
+                <span
+                  className={`${
+                    todo.completed ? "line-through text-gray-500" : "text-white"
+                  }`}
+                >
+                  {todo.title}
+                </span>
+                <div className="flex gap-2 ml-4 mr-0">
+                  <button
+                    onClick={() => handleEditClick(todo)}
+                    className="bg-yellow-500 text-white px-2 py-1 rounded"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => removeTodo(todo.id)}
+                    className="bg-red-500 text-white px-2 py-1 rounded"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
