@@ -10,10 +10,8 @@ type Todo = {
   completed: boolean;
 };
 
-const API_URL = "https://jsonplaceholder.typicode.com/todos";
-
 const fetchTodos = async () => {
-  const response = await axios.get(`${API_URL}?_limit=10`);
+  const response = await axios.get(`https://jsonplaceholder.typicode.com/todos?_limit=10`);
   return response.data;
 };
 
