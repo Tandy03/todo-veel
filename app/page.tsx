@@ -18,15 +18,16 @@ const fetchTodos = async () => {
 };
 
 const createTodo = async (newTodo: string) => {
-  const response = await axios.post(API_URL, {
+  const response = await axios.post('https://jsonplaceholder.typicode.com/todos', {
     title: newTodo,
     completed: false,
+    id: Math.random() * 100,
   });
   return response.data;
 };
 
 const deleteTodo = async (id: number) => {
-  const response = await axios.delete(`${API_URL}/${id}`);
+  const response = await axios.delete(`https://jsonplaceholder.typicode.com/todos/${id}`);
   if (response.status === 200) {
     return { id };
   } else {
@@ -34,33 +35,28 @@ const deleteTodo = async (id: number) => {
   }
 };
 
-const updateTodo = async ({
-  id,
-  updatedTitle,
-}: {
-  id: number;
-  updatedTitle: string;
-}) => {
-  const response = await axios.put(`${API_URL}/${id}`, {
-    title: updatedTitle,
-    completed: false,
-  });
-  return response.data;
-};
-
 export default function Home() {
   const [newTodo, setNewTodo] = useState("");
-  const [editingTodoId, setEditingTodoId] = useState<number | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
   const queryClient = useQueryClient();
 
-  const { data: todos, isLoading, isError } = useQuery("todos", fetchTodos);
+  const { data: todos} = useQuery("todos", fetchTodos);
 
   const { mutate: addTodo } = useMutation(createTodo, {
-    onSuccess: () => {
-      queryClient.invalidateQueries("todos");
+    onMutate: async (newTodo) => {
+      await queryClient.cancelQueries("todos");
+      const previousTodos = queryClient.getQueryData<Todo[]>("todos") || [];
+
+      const newItem = { id: Math.random() * 100, title: newTodo, completed: false };
+      queryClient.setQueryData("todos", [...previousTodos, newItem]);
+
+      return { previousTodos };
+    },
+    onError: (error, newTodo, context) => {
+      queryClient.setQueryData("todos", context?.previousTodos);
     },
   });
+  //add new todo item to Ui, client side, not for api, because cannot change https://jsonplaceholder.typicode.com/
+
 
   const { mutate: removeTodo } = useMutation(deleteTodo, {
     onMutate: async (id) => {
@@ -75,52 +71,40 @@ export default function Home() {
       queryClient.setQueryData("todos", context?.previousTodos);
       console.error("Failed to delete Todo");
     },
-    onSettled: () => {
-      queryClient.invalidateQueries("todos");
-    },
+//    onSettled: () => { //will update todo list from api and deletion will be canceled, because cannot change
+//      queryClient.invalidateQueries("todos"); // api, so it deletes only from client side. if remove comments,
+//    }, //                                        it will request list from api and deleted item will appear then
   });
-
-  const { mutate: editTodo } = useMutation(updateTodo, {
-    onSuccess: () => {
-      queryClient.invalidateQueries("todos");
-    },
-  });
-
-  if (isLoading) return <div>Loading...</div>;
-  if (isError) return <div>Error!</div>;
-
-  const handleEditClick = (todo: Todo) => {
-    setEditingTodoId(todo.id);
-    setEditingTitle(todo.title);
-  };
-
-  const handleSaveEdit = () => {
-    if (
-      editingTodoId &&
-      editingTitle.trim() &&
-      editingTitle !==
-        todos?.find((todo: Todo) => todo.id === editingTodoId)?.title
-    ) {
-      editTodo({ id: editingTodoId, updatedTitle: editingTitle });
-      setEditingTodoId(null);
-      setEditingTitle("");
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setEditingTodoId(null);
-    setEditingTitle("");
-  };
 
   return (
     <div className="max-w-xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Todo App</h1>
+      <h1 className="text-2xl font-bold mb-4 flex items-center gap-2">
+        Todo App
+        <svg
+            width="22"
+            height="22"
+            viewBox="0 0 15 15"
+            fill="none"
+        >
+          <path
+              d="M11.4669 3.72684C11.7558 3.91574 11.8369 4.30308 11.648 4.59198L7.39799 11.092C7.29783 11.2452 7.13556 11.3467 6.95402 11.3699C6.77247 11.3931 6.58989 11.3355 6.45446 11.2124L3.70446 8.71241C3.44905 8.48022 3.43023 8.08494 3.66242 7.82953C3.89461 7.57412 4.28989 7.55529 4.5453 7.78749L6.75292 9.79441L10.6018 3.90792C10.7907 3.61902 11.178 3.53795 11.4669 3.72684Z"
+              fill="currentColor"
+          ></path>
+        </svg>
+      </h1>
+
 
       <div className="mb-4 flex gap-2">
         <input
           type="text"
           value={newTodo}
           onChange={(e) => setNewTodo(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && newTodo.trim()) {
+              addTodo(newTodo);
+              setNewTodo("");
+            }
+          }}
           placeholder="Add new todo"
           className="px-4 py-2 border border-gray-300 rounded"
         />
@@ -140,28 +124,6 @@ export default function Home() {
       <ul className="space-y-2">
         {todos?.map((todo: Todo) => (
           <li key={todo.id} className="flex justify-between items-center">
-            {editingTodoId === todo.id ? (
-              <div className="flex gap-2 ml-4">
-                <input
-                  type="text"
-                  value={editingTitle}
-                  onChange={(e) => setEditingTitle(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded"
-                />
-                <button
-                  onClick={handleSaveEdit}
-                  className="bg-green-500 text-white px-4 py-2 rounded"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={handleCancelEdit}
-                  className="bg-gray-500 text-white px-4 py-2 rounded"
-                >
-                  Canсel
-                </button>
-              </div>
-            ) : (
               <div className="flex justify-between items-center">
                 <span
                   className={`${
@@ -172,12 +134,6 @@ export default function Home() {
                 </span>
                 <div className="flex gap-2 ml-4 mr-0">
                   <button
-                    onClick={() => handleEditClick(todo)}
-                    className="bg-yellow-500 text-white px-2 py-1 rounded"
-                  >
-                    Edit
-                  </button>
-                  <button
                     onClick={() => removeTodo(todo.id)}
                     className="bg-red-500 text-white px-2 py-1 rounded"
                   >
@@ -185,7 +141,6 @@ export default function Home() {
                   </button>
                 </div>
               </div>
-            )}
           </li>
         ))}
       </ul>
