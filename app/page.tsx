@@ -16,13 +16,19 @@ const fetchTodos = async () => {
 };
 
 const createTodo = async (newTodo: string) => {
-  const response = await axios.post('https://jsonplaceholder.typicode.com/todos', {
-    title: newTodo,
-    completed: false,
-    id: Math.random() * 100,
+  const response = await fetch('https://jsonplaceholder.typicode.com/todos', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: newTodo,
+      completed: false,
+      userId: 1,
+    }),
+    headers: {
+      'Content-type': 'application/json; charset=UTF-8',
+    },
   });
-  return response.data;
-};
+  return response.json();
+}; //with JSONPlaceholder documentation
 
 const deleteTodo = async (id: number) => {
   const response = await axios.delete(`https://jsonplaceholder.typicode.com/todos/${id}`);
@@ -31,7 +37,7 @@ const deleteTodo = async (id: number) => {
   } else {
     throw new Error("Failed to delete Todo");
   }
-};
+}; //using axios
 
 export default function Home() {
   const [newTodo, setNewTodo] = useState("");
